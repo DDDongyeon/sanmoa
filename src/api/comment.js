@@ -1,92 +1,24 @@
 import { Router } from 'express';
+import commentdata from '../../models/commentDB';
 import board from '../../models/boardDB';
 import userdata from '../../models/userDB';
-import commentdata from '../../models/commentDB';
+// import cors from 'cors'; //여기에 불러와야 auth 라우터에 적용이 안 돼서,,?
 
 const post = Router();
 const { verifyToken } = require('./middlewares');
-
-//조회 - 헤더에 Access-Control-Allow-Origin 토큰 이용하기
-post.get('/', async (req, res) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Credentials', true);
-
-  const postDatas = await board.findAll({
-    attributes: ['id', 'title', 'postdate'],
-  });
-
-  if (postDatas.length === 0) {
-    //데이터가 하나도 없을 시, []
-    return res.json({
-      data: '작성된 글이 없습니다.',
-    });
-  }
-  res.json({
-    data: postDatas,
-  });
-});
-
-post.get('/:postId', async (req, res) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Credentials', true);
-
-  const { postId } = req.params;
-
-  const postDatas = await board.findOne({
-    attributes: ['id', 'content', 'title', 'userdatumId', 'postdate'],
-    //id가 postId와 동일한 것 중 한 개만 읽어온다.
-    where: {
-      id: postId,
-    },
-  });
-
-  Promise.all([
-    await board.findOne({
-      where: {
-        id: postId,
-      },
-      attributes: ['id', 'title', 'postdate'],
-    }),
-    await commentdata.findAll({
-      where: {
-        id: postId,
-      },attributes: ['id', 'content','userdatumId','postdatumId' ,'commendate'],
-    }),
-  ]).then(([board, commentdata]) => {
-    return res.json( { post:post, comments:comments, commentForm:commentForm, commentError:commentError});
-  })
-  .catch((err) => {
-    console.log('err: ', err);
-    return res.json(err);
-  });
-});
-
-
-  const userDatas = await userdata.findOne({
-    attributes: ['name'],
-    //id가 postId와 동일한 것 중 한 개만 읽어온다.
-    where: {
-      id: postDatas.userdatumId,
-    },
-  });
-
-  if (!postDatas) {
-    //postDatas가 false이면 존재하지 않는 것이다.
-    return res.json({
-      data: '해당 글이 존재하지 않습니다.',
-    });
-  }
-  return res.json({
-    data: postDatas,
-    user: userDatas.name,
-  });
-});
 
 //생성 - 모듈 이용
 post.post('/', verifyToken, async (req, res) => {
   //해당주소로 post 요청 보낼 시, 글 생성-> 생성된 글의 ID만 나타내기
   const jwtUserId = req.decoded.id; //jwt 검증된 id
-  const { content, title } = req.body;
+  const { content, postdatumId } = req.body;
+
+  if (!content) {
+    return {
+      error: '댓글을 작성해주세요.',
+    };
+  }
+
   const mysql = require('mysql2'); // mysql 모듈 로드
   const conn = {
     // mysql 접속 설정
@@ -100,14 +32,14 @@ post.post('/', verifyToken, async (req, res) => {
 
   connection.connect(); // DB 접속
 
-  let sql = `INSERT INTO Posts (content, userdatumId, title) VALUES  ("${content}", "${jwtUserId}", "${title}")`;
+  let sql = `INSERT INTO Posts (content, userdatumId, postdatumId) VALUES  ("${content}", "${jwtUserId}", "${postdatumId}" WHERE postdatumId = "${postdatumId}" and userdatumId = "${jwtUserId}")`;
 
   connection.query(sql, function (err, results, fields) {
     if (err) {
       console.log(err);
     }
   });
-  sql = `SELECT * FROM Posts  WHERE userdatumId = ${jwtUserId}`;
+  sql = `SELECT * FROM Posts  WHERE postdatumId = "${postdatumId}"`;
 
   connection.query(sql, function (err, results, fields) {
     if (err) {
@@ -128,7 +60,7 @@ post.put('/:postId', verifyToken, async (req, res) => {
   const { postId } = req.params;
   const { title } = req.body;
 
-  const postDatas = await board.findOne({
+  const postDatas = await commentdata.findOne({
     //id가 postId와 동일한 것 중 한 개만 읽어온다.(글의 존재여부, 작성자 식별을 위함))
     where: {
       id: postId,
@@ -186,7 +118,7 @@ post.delete('/:postId', verifyToken, async (req, res) => {
   const jwtUserId = req.decoded.id;
   const { postId } = req.params;
 
-  const postDatas = await board.findOne({
+  const postDatas = await commentdata.findOne({
     //id가 postId와 동일한 것 중 한 개만 읽어온다.(글의 존재여부, 작성자 식별을 위함))
     where: {
       id: postId,
